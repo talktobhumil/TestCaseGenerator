@@ -35,7 +35,7 @@ For faster hosted inference, use **Hugging Face Inference API**:
 
 1. Create a Hugging Face token with Inference Providers permission.
 2. Install the requirements.
-3. Paste the token into the app sidebar, or set it as `HF_TOKEN`.
+3. Add the token as `HF_TOKEN` in Streamlit secrets or an environment variable.
 4. Use a model available through Hugging Face Inference Providers.
 
 The default Hugging Face model is:
@@ -46,6 +46,9 @@ Qwen/Qwen3-0.6B
 
 If a Hugging Face provider returns `memory layout cannot be allocated`, use a
 smaller model such as `Qwen/Qwen3-0.6B` or `HuggingFaceTB/SmolLM3-3B`.
+
+The Hugging Face token is never shown in the app UI. Configure it through
+Streamlit Cloud secrets for hosted deployments.
 
 For a local LLM, install [Ollama](https://ollama.com), pull a model, and select
 **LangChain + local Ollama** in the app:

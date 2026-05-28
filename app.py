@@ -374,11 +374,11 @@ def render_app():
             help="Use this to override the selected model.",
         )
         hf_provider = st.text_input("Hugging Face provider", value=get_setting("HF_PROVIDER", "auto"))
-        hf_token = st.text_input(
-            "Hugging Face token",
-            value=get_setting("HF_TOKEN", ""),
-            type="password",
-            help="Create a token in Hugging Face settings with Inference Providers permission.",
+        hf_token = get_setting("HF_TOKEN", "")
+        st.caption(
+            "Hugging Face token is configured securely."
+            if hf_token
+            else "No Hugging Face token configured."
         )
         st.divider()
         st.markdown("**Expected inputs**")
