@@ -30,7 +30,8 @@ You accept the following inputs:
 - Roles involved
 
 When the user provides a ServiceNow story, defect, or requirement, generate QA
-test cases that are practical for manual testing.
+test cases that are practical for manual testing and broad enough to support
+strong QA coverage.
 
 Follow these rules:
 1. Identify the affected ServiceNow area, such as Incident, Change, Problem,
@@ -38,34 +39,50 @@ Follow these rules:
    ACLs, Reports, or Portal.
 2. Extract the business goal and expected user behavior.
 3. Identify the roles or personas that need testing.
-4. Generate test cases using this format:
-   - Test Case ID
-   - Title
-   - Type
-   - Preconditions
-   - Test Data
+4. Generate test cases in plain English using only this format:
+   - Test Case
    - Steps
    - Expected Result
-   - Priority
 5. Use these test case types when relevant:
    - Positive
    - Negative
+   - Boundary
    - Edge
    - Regression
    - Security
    - Integration
    - Data Validation
-6. Include role-based tests when permissions or approvals are involved.
-7. Include regression tests for nearby ServiceNow functionality that may be impacted.
-8. Include negative tests for invalid inputs, missing mandatory fields, incorrect
+6. Always include positive tests for the expected happy path and each acceptance criterion.
+7. Always include negative tests for invalid inputs, missing mandatory fields, incorrect
    states, unauthorized users, and failed integrations where relevant.
-9. Include edge cases for boundary values, duplicate records, inactive
-   users/groups, cancelled workflows, reopened records, and unusual state
-   transitions where relevant.
-10. Keep the test cases practical for a QA analyst to execute manually.
-11. If information is missing, make reasonable assumptions and list them separately.
-12. Do not invent overly broad tests unrelated to the described change.
-13. Use ServiceNow terminology accurately.
+8. Always include boundary tests where limits, priorities, dates, amounts, counts,
+   state transitions, mandatory/optional conditions, or threshold rules are implied.
+9. Always include edge cases for duplicate records, inactive users/groups, cancelled
+   workflows, reopened records, unusual state transitions, empty values, special
+   characters, existing data, and simultaneous or repeated actions where relevant.
+10. Include role-based tests when permissions or approvals are involved.
+11. Include regression tests for nearby ServiceNow functionality that may be impacted.
+12. Include data validation tests for field values, related records, activity logs,
+   approvals, tasks, events, notifications, and audit history where relevant.
+13. Include integration tests when APIs, import sets, transform maps, MID servers,
+   external systems, or outbound messages are involved.
+14. Keep the test cases practical for a QA analyst to execute manually.
+15. If information is missing, make reasonable assumptions and list them separately.
+16. Do not invent overly broad tests unrelated to the described change.
+17. Use ServiceNow terminology accurately.
+18. Maximize relevant coverage. Prefer a complete but focused set of test cases over
+   a tiny sample.
+
+Use a ReAct-style internal workflow before final output:
+1. Observe the story, acceptance criteria, affected module/table, and roles.
+2. Think privately about the likely ServiceNow behavior and risk areas.
+3. Act by drafting test cases.
+4. Review the draft against the coverage checklist.
+5. Revise if positive, negative, boundary, edge, regression, security, integration,
+   or data validation coverage is missing.
+
+Do not reveal hidden reasoning, chain-of-thought, or internal review notes. Return
+only the final answer.
 
 Return every response using this structure:
 
@@ -75,21 +92,48 @@ Briefly summarize what is being tested.
 Assumptions:
 List any assumptions made.
 
-Test Data Needed:
-List users, roles, records, groups, catalog items, or sample data needed.
-
 Test Cases:
 Provide the test cases in a human-readable structured list, not a table.
 Each test case must start on a new line with a bold heading like:
 **TC-001 - Validate expected happy path behavior**
-Then list Type, Priority, Preconditions, Test Data, Steps, and Expected Result
-under that heading.
+Then list only Steps and Expected Result under that heading.
+Steps must be written in plain English and must begin with logging in to
+ServiceNow and going to the respective module or table.
 
 Regression Checks:
 List related areas that should be checked.
 
 Questions / Gaps:
 List anything the user should clarify.
+"""
+
+
+COVERAGE_REVIEW_INSTRUCTIONS = """
+You are reviewing and improving a ServiceNow QA test case draft.
+
+Your job is to return the final improved answer only. Do not explain your
+internal reasoning.
+
+Before finalizing, check whether the draft covers:
+- Each acceptance criterion
+- Positive happy path tests
+- Negative tests
+- Boundary tests
+- Edge cases
+- Role/security tests
+- Regression checks
+- Data validation checks
+- Approval, notification, Flow Designer, catalog, integration, and state
+  transition risks where relevant
+- Plain-English test cases with clear steps and expected results
+- Steps that begin with logging in to ServiceNow and going to the respective
+  module or table
+
+If coverage is missing, add practical test cases. If a test is vague, make it
+more executable. Keep the final output human-readable, with each test case
+starting on a new line. Do not include type, priority, preconditions, or test
+data as separate fields in the final output. The only fields under each test
+case should be Steps and Expected Result.
 """
 
 
@@ -112,6 +156,19 @@ Affected Module/Table:
 
 Roles Involved:
 {roles}
+"""
+
+
+def build_review_prompt(original_prompt, draft_output):
+    return f"""{COVERAGE_REVIEW_INSTRUCTIONS}
+
+Original request:
+{original_prompt}
+
+Draft test cases:
+{draft_output}
+
+Return the final improved ServiceNow QA test cases now.
 """
 
 
@@ -159,6 +216,26 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
         },
         {
             "id": "TC-003",
+            "title": "Validate boundary conditions",
+            "type": "Boundary",
+            "preconditions": f"User can create or update records in {module}.",
+            "data": "Minimum, maximum, blank, and threshold-adjacent values relevant to the story.",
+            "steps": "Test values at the lowest valid value, highest valid value, just below threshold, just above threshold, and blank where applicable.",
+            "expected": "ServiceNow accepts valid boundary values and rejects or handles out-of-range values according to the acceptance criteria.",
+            "priority": "High",
+        },
+        {
+            "id": "TC-004",
+            "title": "Validate edge scenarios and repeated actions",
+            "type": "Edge",
+            "preconditions": f"At least one existing record is available in {module}.",
+            "data": "Duplicate record data, special characters, inactive users/groups, repeated submit or save actions.",
+            "steps": "Repeat the key action, try duplicate or unusual input, and verify behavior with inactive or missing related records where applicable.",
+            "expected": "The system handles unusual but realistic scenarios without duplicate processing, broken state, or unexpected errors.",
+            "priority": "Medium",
+        },
+        {
+            "id": "TC-005",
             "title": "Validate role-based access",
             "type": "Security",
             "preconditions": "At least one authorized and one unauthorized user are available.",
@@ -168,7 +245,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
             "priority": "High",
         },
         {
-            "id": "TC-004",
+            "id": "TC-006",
             "title": "Validate state and data integrity after update",
             "type": "Data Validation",
             "preconditions": "A target record exists before testing begins.",
@@ -178,7 +255,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
             "priority": "Medium",
         },
         {
-            "id": "TC-005",
+            "id": "TC-007",
             "title": "Validate nearby module regression",
             "type": "Regression",
             "preconditions": f"Existing records are available in {module}.",
@@ -192,7 +269,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
     if keywords["approval"]:
         tests.append(
             {
-                "id": "TC-006",
+                "id": "TC-008",
                 "title": "Validate approval routing and approval outcome",
                 "type": "Positive",
                 "preconditions": "An approver or approval group is configured and active.",
@@ -206,7 +283,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
     if keywords["notification"]:
         tests.append(
             {
-                "id": "TC-007",
+                "id": "TC-009",
                 "title": "Validate notification trigger and recipients",
                 "type": "Regression",
                 "preconditions": "Email sending or email log validation is available.",
@@ -220,7 +297,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
     if keywords["integration"]:
         tests.append(
             {
-                "id": "TC-008",
+                "id": "TC-010",
                 "title": "Validate integration success and failure handling",
                 "type": "Integration",
                 "preconditions": "Integration endpoint or mock response is available.",
@@ -235,11 +312,7 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
         dedent(
             f"""
             **{test["id"]} - {test["title"]}**
-            - Type: {test["type"]}
-            - Priority: {test["priority"]}
-            - Preconditions: {test["preconditions"]}
-            - Test Data: {test["data"]}
-            - Steps: {test["steps"]}
+            - Steps: Log in to ServiceNow. Go to {module}. {test["steps"]}
             - Expected Result: {test["expected"]}
             """
         ).strip()
@@ -255,12 +328,6 @@ def fallback_generator(story_title, description, acceptance_criteria, affected_m
             "- The QA tester has access to an appropriate ServiceNow test instance.",
             "- Required users, groups, and roles can be created or impersonated.",
             "- Acceptance criteria are the primary source of expected behavior.",
-            "",
-            "## Test Data Needed",
-            f"- Test user(s): {role_text}",
-            f"- Test record(s) in {module}",
-            "- Valid and invalid field values",
-            "- Active assignment group, approver, or related records where applicable",
             "",
             "## Test Cases",
             "",
@@ -289,13 +356,19 @@ def generate_with_langchain(prompt, model_name):
         ) from exc
 
     llm = ChatOllama(model=model_name, temperature=0.2)
-    response = llm.invoke(
+    draft = llm.invoke(
         [
             SystemMessage(content=AGENT_INSTRUCTIONS),
             HumanMessage(content=prompt),
         ]
     )
-    return response.content
+    final_response = llm.invoke(
+        [
+            SystemMessage(content=COVERAGE_REVIEW_INSTRUCTIONS),
+            HumanMessage(content=build_review_prompt(prompt, draft.content)),
+        ]
+    )
+    return final_response.content
 
 
 def generate_with_huggingface(prompt, model_name, token, provider):
@@ -313,7 +386,7 @@ def generate_with_huggingface(prompt, model_name, token, provider):
 
     try:
         client = InferenceClient(provider=provider, api_key=token, timeout=90)
-        response = client.chat.completions.create(
+        draft = client.chat.completions.create(
             model=model_name,
             messages=[
                 {"role": "system", "content": AGENT_INSTRUCTIONS},
@@ -322,7 +395,17 @@ def generate_with_huggingface(prompt, model_name, token, provider):
             temperature=0.2,
             max_tokens=1800,
         )
-        return response.choices[0].message.content
+        review_prompt = build_review_prompt(prompt, draft.choices[0].message.content)
+        final_response = client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": COVERAGE_REVIEW_INSTRUCTIONS},
+                {"role": "user", "content": review_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=2400,
+        )
+        return final_response.choices[0].message.content
     except Exception as exc:
         message = str(exc)
         if "memory layout cannot be allocated" in message.lower():

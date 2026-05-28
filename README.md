@@ -3,6 +3,20 @@
 A small Streamlit app that generates manual QA test cases for ServiceNow stories,
 defects, and requirements.
 
+LLM-backed generation uses a two-pass flow: the model drafts test cases, then
+reviews and improves coverage for positive, negative, boundary, edge, regression,
+security, integration, and data validation scenarios before returning the final
+answer.
+
+Each generated test case is returned in plain English with only:
+
+- Test Case
+- Steps
+- Expected Result
+
+Steps begin with logging in to ServiceNow and going to the affected module or
+table.
+
 ## Inputs
 
 - Story title
