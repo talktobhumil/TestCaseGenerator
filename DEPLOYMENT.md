@@ -13,7 +13,12 @@ Spaces, Render, Railway, or any server that can run Python.
 Example Streamlit secret:
 
 ```toml
+APP_USERNAME = "your_username"
+APP_PASSWORD = "your_strong_password"
+APP_AUTH_ENABLED = "true"
 HF_TOKEN = "your_hugging_face_token_here"
+HF_MODEL = "Qwen/Qwen3-0.6B"
+HF_PROVIDER = "auto"
 ```
 
 ## Hugging Face Spaces
@@ -33,6 +38,8 @@ streamlit run app.py --server.port $PORT --server.address 0.0.0.0
 
 ## Notes
 
+- The app login is intentionally enabled by default. Add `APP_USERNAME` and
+  `APP_PASSWORD` in secrets before sharing the app.
 - Hosted Hugging Face inference requires a Hugging Face token.
 - Local Ollama mode only works on a machine where Ollama is installed and running.
 - The built-in free generator works without external services.

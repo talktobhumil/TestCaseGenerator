@@ -1,3 +1,4 @@
+import hmac
 import os
 from textwrap import dedent
 
@@ -14,6 +15,52 @@ def get_setting(name, default=""):
         return st.secrets.get(name, default)
     except Exception:
         return default
+
+
+def is_auth_enabled():
+    return str(get_setting("APP_AUTH_ENABLED", "true")).strip().lower() != "false"
+
+
+def require_login():
+    if not is_auth_enabled():
+        return
+
+    expected_username = get_setting("APP_USERNAME", "")
+    expected_password = get_setting("APP_PASSWORD", "")
+
+    if not expected_username or not expected_password:
+        st.error("App login is enabled, but APP_USERNAME and APP_PASSWORD are not configured.")
+        st.info("Add them in Streamlit Cloud Secrets, then reboot the app.")
+        st.stop()
+
+    if st.session_state.get("authenticated"):
+        with st.sidebar:
+            st.caption(f"Signed in as {st.session_state.get('username', expected_username)}")
+            if st.button("Log out"):
+                st.session_state.clear()
+                st.rerun()
+        return
+
+    st.title("ServiceNow QA Test Case Generator")
+    st.caption("Sign in to access the test case generator.")
+
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submitted = st.form_submit_button("Sign in", type="primary")
+
+    if submitted:
+        username_matches = hmac.compare_digest(username, expected_username)
+        password_matches = hmac.compare_digest(password, expected_password)
+
+        if username_matches and password_matches:
+            st.session_state["authenticated"] = True
+            st.session_state["username"] = username
+            st.rerun()
+
+        st.error("Invalid username or password.")
+
+    st.stop()
 
 
 AGENT_INSTRUCTIONS = """
@@ -433,6 +480,7 @@ def get_default_hf_model():
 
 def render_app():
     st.set_page_config(page_title=APP_TITLE, page_icon="QA", layout="wide")
+    require_login()
 
     st.title(APP_TITLE)
     st.caption("Generate practical manual QA test cases for ServiceNow stories, defects, and requirements.")

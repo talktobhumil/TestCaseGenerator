@@ -32,6 +32,19 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
+## App Login
+
+The app is password-protected by default. Configure these values in Streamlit
+Cloud secrets:
+
+```toml
+APP_USERNAME = "your_username"
+APP_PASSWORD = "your_strong_password"
+APP_AUTH_ENABLED = "true"
+```
+
+Set `APP_AUTH_ENABLED = "false"` only for a trusted local or private deployment.
+
 ## Project Files
 
 - `app.py` - Streamlit app and agent logic
