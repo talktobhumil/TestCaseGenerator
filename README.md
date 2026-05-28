@@ -17,6 +17,20 @@ Each generated test case is returned in plain English with only:
 Steps begin with logging in to ServiceNow and going to the affected module or
 table.
 
+The app also checks input quality before generation and warns when details such
+as acceptance criteria, roles, or module/table information are missing.
+
+Generated test cases can be downloaded as `.xlsx` with these columns:
+
+- Story#
+- Test suite#
+- Product
+- Theme
+- Test case description
+- Short description
+- Steps - always give detail steps
+- Expected results
+
 ## Inputs
 
 - Story title

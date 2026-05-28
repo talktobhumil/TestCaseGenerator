@@ -1,7 +1,10 @@
 import hmac
+import io
 import os
+import re
 from textwrap import dedent
 
+import pandas as pd
 import streamlit as st
 
 
@@ -217,6 +220,117 @@ Draft test cases:
 
 Return the final improved ServiceNow QA test cases now.
 """
+
+
+def check_input_quality(story_title, description, acceptance_criteria, affected_module, roles):
+    issues = []
+
+    if not story_title.strip():
+        issues.append("Story title is missing.")
+    if len(description.strip()) < 30:
+        issues.append("Description is very short; add business behavior or changed functionality if available.")
+    if len(acceptance_criteria.strip()) < 20:
+        issues.append("Acceptance criteria are missing or too brief; coverage may rely on assumptions.")
+    if not affected_module.strip():
+        issues.append("Affected module/table is missing; navigation steps may be generic.")
+    if not roles.strip():
+        issues.append("Roles involved are missing; role/security coverage may be generic.")
+
+    combined = " ".join([story_title, description, acceptance_criteria]).lower()
+    if not any(word in combined for word in ["should", "must", "when", "then", "only", "if", "allow", "prevent"]):
+        issues.append("Expected behavior is unclear; include trigger conditions and expected outcomes for stronger tests.")
+    if not any(char.isdigit() for char in combined) and not any(
+        word in combined for word in ["minimum", "maximum", "limit", "threshold", "priority", "date", "amount"]
+    ):
+        issues.append("No obvious boundary values were found; boundary tests will be inferred.")
+
+    if len(issues) <= 1:
+        score = "Strong"
+    elif len(issues) <= 3:
+        score = "Moderate"
+    else:
+        score = "Needs detail"
+
+    return score, issues
+
+
+def extract_test_cases(markdown_output):
+    pattern = re.compile(
+        r"\*\*(?P<case_id>TC-\d+)\s*-\s*(?P<title>.*?)\*\*(?P<body>.*?)(?=\n\*\*TC-\d+\s*-|\Z)",
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    cases = []
+    for match in pattern.finditer(markdown_output):
+        title = re.sub(r"\s+", " ", match.group("title")).strip()
+        body = match.group("body").strip()
+        steps_match = re.search(
+            r"(?:^|\n)\s*-\s*Steps:\s*(?P<steps>.*?)(?=\n\s*-\s*Expected Result:|\n\s*-\s*Expected results:|\Z)",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        expected_match = re.search(
+            r"(?:^|\n)\s*-\s*Expected Result[s]?:\s*(?P<expected>.*?)(?=\n\s*-\s*[A-Za-z ]+:|\Z)",
+            body,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        steps = re.sub(r"\s+", " ", steps_match.group("steps")).strip() if steps_match else ""
+        expected = re.sub(r"\s+", " ", expected_match.group("expected")).strip() if expected_match else ""
+        cases.append(
+            {
+                "case_id": match.group("case_id").strip(),
+                "title": title,
+                "steps": steps,
+                "expected": expected,
+            }
+        )
+
+    return cases
+
+
+def build_xlsx_download(markdown_output, story_number, test_suite, product, theme, story_title):
+    rows = []
+    for case in extract_test_cases(markdown_output):
+        rows.append(
+            {
+                "Story#": story_number or "Not provided",
+                "Test suite#": test_suite or "Not provided",
+                "Product": product or "ServiceNow",
+                "Theme": theme or "QA",
+                "Test case description": case["title"],
+                "Short description": story_title or case["title"],
+                "Steps - always give detail steps": case["steps"],
+                "Expected results": case["expected"],
+            }
+        )
+
+    if not rows:
+        rows.append(
+            {
+                "Story#": story_number or "Not provided",
+                "Test suite#": test_suite or "Not provided",
+                "Product": product or "ServiceNow",
+                "Theme": theme or "QA",
+                "Test case description": "Generated QA test cases",
+                "Short description": story_title or "Generated QA test cases",
+                "Steps - always give detail steps": markdown_output,
+                "Expected results": "Review generated output.",
+            }
+        )
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        pd.DataFrame(rows).to_excel(writer, index=False, sheet_name="Test Cases")
+        worksheet = writer.sheets["Test Cases"]
+        for column_cells in worksheet.columns:
+            max_length = max(len(str(cell.value or "")) for cell in column_cells)
+            worksheet.column_dimensions[column_cells[0].column_letter].width = min(max(max_length + 2, 14), 60)
+        for row in worksheet.iter_rows():
+            for cell in row:
+                cell.alignment = cell.alignment.copy(wrap_text=True, vertical="top")
+
+    output.seek(0)
+    return output.getvalue()
 
 
 def infer_keywords(text):
@@ -519,6 +633,10 @@ def render_app():
         col_a, col_b = st.columns(2)
 
         with col_a:
+            story_number = st.text_input("Story #", placeholder="STRY0012345")
+            test_suite = st.text_input("Test suite #", placeholder="TS001")
+            product = st.text_input("Product", value="ServiceNow")
+            theme = st.text_input("Theme", placeholder="Incident, Catalog, Change, Flow Designer")
             story_title = st.text_input("Story title", placeholder="Add approval for high-priority incidents")
             affected_module = st.text_input("Affected module/table", placeholder="Incident / incident")
             roles = st.text_input("Roles involved", placeholder="ITIL user, assignment group manager, admin")
@@ -543,6 +661,21 @@ def render_app():
             return
 
         prompt = build_prompt(story_title, description, acceptance_criteria, affected_module, roles)
+        quality_score, quality_issues = check_input_quality(
+            story_title,
+            description,
+            acceptance_criteria,
+            affected_module,
+            roles,
+        )
+
+        with st.expander(f"Input Quality: {quality_score}", expanded=quality_score != "Strong"):
+            if quality_issues:
+                st.markdown("The agent will continue, but these details would improve coverage:")
+                for issue in quality_issues:
+                    st.warning(issue)
+            else:
+                st.success("Inputs look strong enough for focused test coverage.")
 
         with st.spinner("Generating ServiceNow QA test cases..."):
             try:
@@ -571,6 +704,20 @@ def render_app():
 
         st.subheader("Generated QA Test Cases")
         st.markdown(output)
+        xlsx_data = build_xlsx_download(
+            output,
+            story_number.strip(),
+            test_suite.strip(),
+            product.strip(),
+            theme.strip(),
+            story_title.strip(),
+        )
+        st.download_button(
+            "Download XLSX",
+            data=xlsx_data,
+            file_name="servicenow_qa_test_cases.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         st.download_button(
             "Download Markdown",
             data=output,
